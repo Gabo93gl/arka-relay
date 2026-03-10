@@ -50,7 +50,7 @@ async function fetchJSON(url, opts = {}, timeout = 15000) {
   const t = setTimeout(() => ctrl.abort(), timeout);
   try {
     const r = await fetch(url, {
-      headers: { 'User-Agent':'ARKARelay/5.0', Accept:'application/json', ...(opts.headers||{}) },
+      headers: { 'User-Agent':'ARKARelay/7.0', Accept:'application/json', ...(opts.headers||{}) },
       signal: ctrl.signal,
     });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -62,7 +62,7 @@ async function fetchJSON(url, opts = {}, timeout = 15000) {
 
 // ── /health ───────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
-  res.json({ status:'ok', version:5, ts: new Date().toISOString(),
+  res.json({ status:'ok', version:7, ts: new Date().toISOString(),
     endpoints:['/health','/market-snapshot','/finnhub','/fred','/nyt',
                '/newsapi','/gdelt','/polymarket','/opensky','/ais',
                '/rss','/oref','/ai','/cyber-feed','/military-feed'] });
@@ -225,7 +225,7 @@ app.get('/rss', auth, async (req, res) => {
   const cached = getCached(ck);
   if (cached) return res.json(cached);
   try {
-    const r = await fetch(url, { headers:{'User-Agent':'ARKARelay/5.0','Accept':'application/rss+xml,application/xml,text/xml,*/*'} });
+    const r = await fetch(url, { headers:{'User-Agent':'ARKARelay/7.0','Accept':'application/rss+xml,application/xml,text/xml,*/*'} });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const text = await r.text();
     setCached(ck, { xml: text }, 900_000);
@@ -303,5 +303,5 @@ app.post('/ai', auth, async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`ARKA Relay v5 on :${PORT} | Auth:${SECRET?'ON':'OFF'}`);
+  console.log(`ARKA Relay v7 on :${PORT} | Auth:${SECRET?'ON':'OFF'}`);
 });
