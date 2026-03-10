@@ -1,5 +1,5 @@
 // ============================================================
-//  ARKA Intelligence Center — Relay Server v7
+//  ARKA Intelligence Center — Relay Server v5
 //  Rewrite limpio — Mar 2026
 // ============================================================
 import express from 'express';
