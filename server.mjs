@@ -1,5 +1,5 @@
 // ============================================================
-//  ARKA Intelligence Center — Relay Server v5
+//  ARKA Intelligence Center — Relay Server v9
 //  Rewrite limpio — Mar 2026
 // ============================================================
 import express from 'express';
@@ -45,24 +45,33 @@ function setCached(k, data, ttlMs = 300_000) {
 }
 
 // ── fetchJSON helper ──────────────────────────────────────────
-async function fetchJSON(url, opts = {}, timeout = 15000) {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), timeout);
-  try {
-    const r = await fetch(url, {
-      headers: { 'User-Agent':'ARKARelay/7.0', Accept:'application/json', ...(opts.headers||{}) },
-      signal: ctrl.signal,
-    });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return await r.json();
-  } finally {
-    clearTimeout(t);
+async function fetchJSON(url, opts = {}, timeout = 15000, retries = 2) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeout);
+    try {
+      const r = await fetch(url, {
+        headers: { 'User-Agent':'ARKARelay/7.0', Accept:'application/json', ...(opts.headers||{}) },
+        signal: ctrl.signal,
+      });
+      clearTimeout(t);
+      if (r.status === 429) {
+        if (attempt < retries) { await new Promise(r => setTimeout(r, 3000 * (attempt + 1))); continue; }
+        throw new Error('HTTP 429');
+      }
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return await r.json();
+    } catch(e) {
+      clearTimeout(t);
+      if (attempt < retries && !e.message.includes('429')) { await new Promise(r => setTimeout(r, 1000)); continue; }
+      throw e;
+    }
   }
 }
 
 // ── /health ───────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
-  res.json({ status:'ok', version:7, ts: new Date().toISOString(),
+  res.json({ status:'ok', version:9, ts: new Date().toISOString(),
     endpoints:['/health','/market-snapshot','/finnhub','/fred','/nyt',
                '/newsapi','/gdelt','/polymarket','/opensky','/ais',
                '/rss','/oref','/ai','/cyber-feed','/military-feed'] });
@@ -151,7 +160,7 @@ app.get('/gdelt', auth, async (req, res) => {
   try {
     const params = new URLSearchParams({...req.query, format:'json'});
     const data = await fetchJSON(`https://api.gdeltproject.org/api/v2/doc/doc?${params}`);
-    setCached(ck, data, 900_000);
+    setCached(ck, data, 1_800_000);
     res.json(data);
   } catch(e){ res.status(502).json({error:e.message}); }
 });
@@ -170,34 +179,60 @@ app.get('/polymarket', auth, async (req, res) => {
 });
 
 // ── /opensky ─────────────────────────────────────────────────
+// OpenSky free: ~6000 states con OAuth2, ~400 sin auth
+// Estrategia: intentar OAuth2 primero, fallback a anon, cache 2min
+let _osToken = null;
+let _osTokenExp = 0;
+
+async function getOSToken() {
+  if (_osToken && Date.now() < _osTokenExp - 30000) return _osToken;
+  const id = process.env.OPENSKY_CLIENT_ID;
+  const sec = process.env.OPENSKY_CLIENT_SECRET;
+  if (!id || !sec) return null;
+  try {
+    const r = await fetch('https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token', {
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:new URLSearchParams({ grant_type:'client_credentials', client_id:id, client_secret:sec }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!r.ok) return null;
+    const { access_token, expires_in } = await r.json();
+    _osToken = access_token;
+    _osTokenExp = Date.now() + (expires_in * 1000);
+    return access_token;
+  } catch { return null; }
+}
+
 app.get('/opensky', auth, async (req, res) => {
   const ck = 'opensky_global';
   const cached = getCached(ck);
   if (cached) return res.json(cached);
+
   const { lamin='-60', lamax='75', lomin='-180', lomax='180' } = req.query;
-  try {
-    const id  = process.env.OPENSKY_CLIENT_ID;
-    const sec = process.env.OPENSKY_CLIENT_SECRET;
-    // OAuth2 token
-    const tokenRes = await fetch('https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token', {
-      method:'POST',
-      headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body:new URLSearchParams({ grant_type:'client_credentials', client_id:id, client_secret:sec }),
-    });
-    if (!tokenRes.ok) throw new Error(`OpenSky token ${tokenRes.status}`);
-    const { access_token } = await tokenRes.json();
-    const url = `https://opensky-network.org/api/states/all?lamin=${lamin}&lamax=${lamax}&lomin=${lomin}&lomax=${lomax}`;
-    const data = await fetchJSON(url, { headers:{ Authorization:`Bearer ${access_token}` } });
-    setCached(ck, data, 120_000);
-    res.json(data);
-  } catch(e){
-    // Fallback sin auth (rate-limited pero funcional)
+  const url = `https://opensky-network.org/api/states/all?lamin=${lamin}&lamax=${lamax}&lomin=${lomin}&lomax=${lomax}`;
+
+  // Intento 1: con OAuth2 (más estados, menos rate-limit)
+  const token = await getOSToken();
+  if (token) {
     try {
-      const url = `https://opensky-network.org/api/states/all?lamin=${lamin}&lamax=${lamax}&lomin=${lomin}&lomax=${lomax}`;
-      const data = await fetchJSON(url);
-      setCached(ck, data, 120_000);
-      res.json(data);
-    } catch(e2){ res.status(503).json({error:`OpenSky: ${e2.message}`}); }
+      const data = await fetchJSON(url, { headers:{ Authorization:`Bearer ${token}` } }, 25000, 1);
+      if (data?.states?.length) {
+        setCached(ck, data, 120_000);
+        return res.json(data);
+      }
+    } catch(e) {
+      if (e.message.includes('401') || e.message.includes('403')) { _osToken = null; } // invalidar token
+    }
+  }
+
+  // Intento 2: anónimo (sin auth — devuelve ~400 estados pero siempre funciona)
+  try {
+    const data = await fetchJSON(url, {}, 20000, 1);
+    setCached(ck, data, 120_000);
+    return res.json(data);
+  } catch(e) {
+    return res.status(503).json({ error:`OpenSky unavailable: ${e.message}`, states:[] });
   }
 });
 
@@ -254,7 +289,7 @@ app.get('/cyber-feed', auth, async (req, res) => {
     });
     const data = await fetchJSON(`https://api.gdeltproject.org/api/v2/doc/doc?${params}`);
     const items = (data.articles||[]).map(a=>({ title:a.title, src:a.domain, url:a.url, time:a.seendate }));
-    setCached(ck, items, 900_000);
+    setCached(ck, items, 1_800_000);
     res.json(items);
   } catch(e){ res.status(500).json({error:e.message}); }
 });
@@ -270,7 +305,7 @@ app.get('/military-feed', auth, async (req, res) => {
     });
     const data = await fetchJSON(`https://api.gdeltproject.org/api/v2/doc/doc?${params}`);
     const items = (data.articles||[]).map(a=>({ title:a.title, src:a.domain, url:a.url, time:a.seendate }));
-    setCached(ck, items, 1200_000);
+    setCached(ck, items, 1_800_000);
     res.json(items);
   } catch(e){ res.status(500).json({error:e.message}); }
 });
@@ -303,5 +338,5 @@ app.post('/ai', auth, async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`ARKA Relay v7 on :${PORT} | Auth:${SECRET?'ON':'OFF'}`);
+  console.log(`ARKA Relay v9 on :${PORT} | Auth:${SECRET?'ON':'OFF'}`);
 });
