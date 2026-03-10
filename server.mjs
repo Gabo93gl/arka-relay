@@ -1,6 +1,6 @@
 // ============================================================
-//  ARKA Intelligence Center — Relay Server v6
-//  Mar 2026
+//  ARKA Intelligence Center — Relay Server v5
+//  Rewrite limpio — Mar 2026
 // ============================================================
 import express from 'express';
 import fetch   from 'node-fetch';
@@ -10,6 +10,7 @@ const app    = express();
 const SECRET = process.env.RELAY_SHARED_SECRET || '';
 const PORT   = process.env.PORT || 3001;
 
+// ── Middlewares ───────────────────────────────────────────────
 app.use(cors({
   origin: [
     /^https?:\/\/localhost(:\d+)?$/,
@@ -23,6 +24,7 @@ app.use(cors({
 app.options('*', cors());
 app.use(express.json());
 
+// ── Auth middleware ───────────────────────────────────────────
 function auth(req, res, next) {
   if (!SECRET) return next();
   const k = req.headers['x-relay-key'] || (req.headers.authorization||'').replace('Bearer ','');
@@ -30,6 +32,7 @@ function auth(req, res, next) {
   next();
 }
 
+// ── In-memory cache ───────────────────────────────────────────
 const cache = new Map();
 function getCached(k) {
   const e = cache.get(k);
@@ -41,12 +44,13 @@ function setCached(k, data, ttlMs = 300_000) {
   cache.set(k, { data, exp: Date.now() + ttlMs });
 }
 
+// ── fetchJSON helper ──────────────────────────────────────────
 async function fetchJSON(url, opts = {}, timeout = 15000) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeout);
   try {
     const r = await fetch(url, {
-      headers: { 'User-Agent':'ARKARelay/6.0', Accept:'application/json', ...(opts.headers||{}) },
+      headers: { 'User-Agent':'ARKARelay/5.0', Accept:'application/json', ...(opts.headers||{}) },
       signal: ctrl.signal,
     });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -56,19 +60,15 @@ async function fetchJSON(url, opts = {}, timeout = 15000) {
   }
 }
 
+// ── /health ───────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
-  res.json({ status:'ok', version:6, ts: new Date().toISOString(),
-    env: {
-      NEWSAPI_KEY: !!process.env.NEWSAPI_KEY,
-      GROQ_API_KEY: !!process.env.GROQ_API_KEY,
-      FINNHUB_API_KEY: !!process.env.FINNHUB_API_KEY,
-      RELAY_SECRET: !!process.env.RELAY_SHARED_SECRET,
-    },
+  res.json({ status:'ok', version:5, ts: new Date().toISOString(),
     endpoints:['/health','/market-snapshot','/finnhub','/fred','/nyt',
                '/newsapi','/gdelt','/polymarket','/opensky','/ais',
                '/rss','/oref','/ai','/cyber-feed','/military-feed'] });
 });
 
+// ── /market-snapshot ─────────────────────────────────────────
 app.get('/market-snapshot', auth, async (req, res) => {
   const ck = 'market_snap';
   const cached = getCached(ck);
@@ -89,6 +89,7 @@ app.get('/market-snapshot', auth, async (req, res) => {
   } catch(e){ res.status(502).json({error:e.message}); }
 });
 
+// ── /finnhub ─────────────────────────────────────────────────
 app.get('/finnhub', auth, async (req, res) => {
   const key = process.env.FINNHUB_API_KEY;
   const { path: p='quote', ...rest } = req.query;
@@ -99,6 +100,7 @@ app.get('/finnhub', auth, async (req, res) => {
   } catch(e){ res.status(502).json({error:e.message}); }
 });
 
+// ── /fred ─────────────────────────────────────────────────────
 app.get('/fred', auth, async (req, res) => {
   const key = process.env.FRED_API_KEY;
   const ck = `fred_${JSON.stringify(req.query)}`;
@@ -112,6 +114,7 @@ app.get('/fred', auth, async (req, res) => {
   } catch(e){ res.status(502).json({error:e.message}); }
 });
 
+// ── /nyt ─────────────────────────────────────────────────────
 app.get('/nyt', auth, async (req, res) => {
   const key = process.env.NYT_API_KEY;
   const ck = `nyt_${JSON.stringify(req.query)}`;
@@ -125,9 +128,9 @@ app.get('/nyt', auth, async (req, res) => {
   } catch(e){ res.status(502).json({error:e.message}); }
 });
 
+// ── /newsapi ─────────────────────────────────────────────────
 app.get('/newsapi', auth, async (req, res) => {
   const key = process.env.NEWSAPI_KEY;
-  if (!key) return res.status(500).json({ error:'NEWSAPI_KEY not set' });
   const ck = `newsapi_${JSON.stringify(req.query)}`;
   const cached = getCached(ck);
   if (cached) return res.json(cached);
@@ -140,6 +143,7 @@ app.get('/newsapi', auth, async (req, res) => {
   } catch(e){ res.status(502).json({error:e.message}); }
 });
 
+// ── /gdelt ───────────────────────────────────────────────────
 app.get('/gdelt', auth, async (req, res) => {
   const ck = `gdelt_${JSON.stringify(req.query)}`;
   const cached = getCached(ck);
@@ -152,6 +156,7 @@ app.get('/gdelt', auth, async (req, res) => {
   } catch(e){ res.status(502).json({error:e.message}); }
 });
 
+// ── /polymarket ───────────────────────────────────────────────
 app.get('/polymarket', auth, async (req, res) => {
   const ck = `poly_${JSON.stringify(req.query)}`;
   const cached = getCached(ck);
@@ -164,6 +169,7 @@ app.get('/polymarket', auth, async (req, res) => {
   } catch(e){ res.status(502).json({error:e.message}); }
 });
 
+// ── /opensky ─────────────────────────────────────────────────
 app.get('/opensky', auth, async (req, res) => {
   const ck = 'opensky_global';
   const cached = getCached(ck);
@@ -172,6 +178,7 @@ app.get('/opensky', auth, async (req, res) => {
   try {
     const id  = process.env.OPENSKY_CLIENT_ID;
     const sec = process.env.OPENSKY_CLIENT_SECRET;
+    // OAuth2 token
     const tokenRes = await fetch('https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token', {
       method:'POST',
       headers:{'Content-Type':'application/x-www-form-urlencoded'},
@@ -184,6 +191,7 @@ app.get('/opensky', auth, async (req, res) => {
     setCached(ck, data, 120_000);
     res.json(data);
   } catch(e){
+    // Fallback sin auth (rate-limited pero funcional)
     try {
       const url = `https://opensky-network.org/api/states/all?lamin=${lamin}&lamax=${lamax}&lomin=${lomin}&lomax=${lomax}`;
       const data = await fetchJSON(url);
@@ -193,18 +201,23 @@ app.get('/opensky', auth, async (req, res) => {
   }
 });
 
+// ── /ais ─────────────────────────────────────────────────────
 app.get('/ais', auth, async (req, res) => {
   const ck = 'ais_global';
   const cached = getCached(ck);
   if (cached) return res.json(cached);
   try {
     const apiKey = process.env.AISSTREAM_API_KEY;
-    const data = await fetchJSON(`https://api.aisstream.io/v0/vessel/location?apiKey=${apiKey}&limit=200`);
+    // AISStream REST snapshot — últimos 200 vessels activos
+    const data = await fetchJSON(
+      `https://api.aisstream.io/v0/vessel/location?apiKey=${apiKey}&limit=200`
+    );
     setCached(ck, data, 120_000);
     res.json(data);
   } catch(e){ res.status(502).json({error:e.message}); }
 });
 
+// ── /rss ─────────────────────────────────────────────────────
 app.get('/rss', auth, async (req, res) => {
   const { url } = req.query;
   if (!url) return res.status(400).json({error:'url required'});
@@ -212,7 +225,7 @@ app.get('/rss', auth, async (req, res) => {
   const cached = getCached(ck);
   if (cached) return res.json(cached);
   try {
-    const r = await fetch(url, { headers:{'User-Agent':'ARKARelay/6.0','Accept':'application/rss+xml,application/xml,text/xml,*/*'} });
+    const r = await fetch(url, { headers:{'User-Agent':'ARKARelay/5.0','Accept':'application/rss+xml,application/xml,text/xml,*/*'} });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const text = await r.text();
     setCached(ck, { xml: text }, 900_000);
@@ -220,6 +233,7 @@ app.get('/rss', auth, async (req, res) => {
   } catch(e){ res.status(502).json({error:e.message}); }
 });
 
+// ── /oref ─────────────────────────────────────────────────────
 app.get('/oref', auth, async (req, res) => {
   try {
     const data = await fetchJSON('https://www.oref.org.il/WarningMessages/History/AlertsHistory.json',
@@ -228,25 +242,23 @@ app.get('/oref', auth, async (req, res) => {
   } catch(e){ res.status(502).json({error:e.message}); }
 });
 
+// ── /cyber-feed ───────────────────────────────────────────────
 app.get('/cyber-feed', auth, async (req, res) => {
   const ck = 'cyber_feed';
   const cached = getCached(ck);
   if (cached) return res.json(cached);
   try {
-    const key = process.env.NEWSAPI_KEY;
-    if (!key) return res.status(500).json({ error:'NEWSAPI_KEY not set' });
     const params = new URLSearchParams({
-      q: 'ransomware OR cyberattack OR "zero-day" OR "data breach" OR APT OR malware',
-      language:'en', sortBy:'publishedAt', pageSize:'12',
+      query:'ransomware cyberattack "zero-day" APT malware "data breach" hacking intrusion',
+      mode:'artlist', maxrecords:'15', timespan:'24h', sort:'hybridrel', format:'json',
     });
-    const data = await fetchJSON(`https://newsapi.org/v2/everything?${params}`,
-      { headers:{'X-Api-Key':key} });
-    const items = (data.articles||[]).map(a=>({ title:a.title, src:a.source?.name, url:a.url, time:a.publishedAt }));
+    const data = await fetchJSON(`https://api.gdeltproject.org/api/v2/doc/doc?${params}`);
+    const items = (data.articles||[]).map(a=>({ title:a.title, src:a.domain, url:a.url, time:a.seendate }));
     setCached(ck, items, 900_000);
     res.json(items);
   } catch(e){ res.status(500).json({error:e.message}); }
 });
-
+// ── /military-feed ────────────────────────────────────────────
 app.get('/military-feed', auth, async (req, res) => {
   const ck = 'military_feed';
   const cached = getCached(ck);
@@ -263,6 +275,7 @@ app.get('/military-feed', auth, async (req, res) => {
   } catch(e){ res.status(500).json({error:e.message}); }
 });
 
+// ── /ai ───────────────────────────────────────────────────────
 app.post('/ai', auth, async (req, res) => {
   const { messages, max_tokens=400 } = req.body || {};
   if (!messages || !Array.isArray(messages)) {
@@ -270,9 +283,11 @@ app.post('/ai', auth, async (req, res) => {
   }
   const key = process.env.GROQ_API_KEY;
   if (!key) return res.status(503).json({ error:'GROQ_API_KEY not configured' });
+
   const ck = 'ai_' + Buffer.from(messages.map(m=>m.content).join('|')).toString('base64').slice(0,32);
   const cached = getCached(ck);
   if (cached) return res.json(cached);
+
   try {
     const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method:'POST',
@@ -288,5 +303,5 @@ app.post('/ai', auth, async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`ARKA Relay v6 on :${PORT} | Auth:${SECRET?'ON':'OFF'} | NEWSAPI:${process.env.NEWSAPI_KEY?'OK':'MISSING'} | GROQ:${process.env.GROQ_API_KEY?'OK':'MISSING'}`);
+  console.log(`ARKA Relay v5 on :${PORT} | Auth:${SECRET?'ON':'OFF'}`);
 });
