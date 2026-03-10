@@ -1,5 +1,5 @@
 // ============================================================
-//  ARKA Intelligence Center — Relay Server v8
+//  ARKA Intelligence Center — Relay Server v5
 //  Rewrite limpio — Mar 2026
 // ============================================================
 import express from 'express';
@@ -45,33 +45,24 @@ function setCached(k, data, ttlMs = 300_000) {
 }
 
 // ── fetchJSON helper ──────────────────────────────────────────
-async function fetchJSON(url, opts = {}, timeout = 15000, retries = 2) {
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), timeout);
-    try {
-      const r = await fetch(url, {
-        headers: { 'User-Agent':'ARKARelay/7.0', Accept:'application/json', ...(opts.headers||{}) },
-        signal: ctrl.signal,
-      });
-      clearTimeout(t);
-      if (r.status === 429) {
-        if (attempt < retries) { await new Promise(r => setTimeout(r, 3000 * (attempt + 1))); continue; }
-        throw new Error('HTTP 429');
-      }
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return await r.json();
-    } catch(e) {
-      clearTimeout(t);
-      if (attempt < retries && !e.message.includes('429')) { await new Promise(r => setTimeout(r, 1000)); continue; }
-      throw e;
-    }
+async function fetchJSON(url, opts = {}, timeout = 15000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeout);
+  try {
+    const r = await fetch(url, {
+      headers: { 'User-Agent':'ARKARelay/7.0', Accept:'application/json', ...(opts.headers||{}) },
+      signal: ctrl.signal,
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } finally {
+    clearTimeout(t);
   }
 }
 
 // ── /health ───────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
-  res.json({ status:'ok', version:8, ts: new Date().toISOString(),
+  res.json({ status:'ok', version:7, ts: new Date().toISOString(),
     endpoints:['/health','/market-snapshot','/finnhub','/fred','/nyt',
                '/newsapi','/gdelt','/polymarket','/opensky','/ais',
                '/rss','/oref','/ai','/cyber-feed','/military-feed'] });
@@ -160,7 +151,7 @@ app.get('/gdelt', auth, async (req, res) => {
   try {
     const params = new URLSearchParams({...req.query, format:'json'});
     const data = await fetchJSON(`https://api.gdeltproject.org/api/v2/doc/doc?${params}`);
-    setCached(ck, data, 1_800_000);
+    setCached(ck, data, 900_000);
     res.json(data);
   } catch(e){ res.status(502).json({error:e.message}); }
 });
@@ -263,7 +254,7 @@ app.get('/cyber-feed', auth, async (req, res) => {
     });
     const data = await fetchJSON(`https://api.gdeltproject.org/api/v2/doc/doc?${params}`);
     const items = (data.articles||[]).map(a=>({ title:a.title, src:a.domain, url:a.url, time:a.seendate }));
-    setCached(ck, items, 1_800_000);
+    setCached(ck, items, 900_000);
     res.json(items);
   } catch(e){ res.status(500).json({error:e.message}); }
 });
@@ -279,7 +270,7 @@ app.get('/military-feed', auth, async (req, res) => {
     });
     const data = await fetchJSON(`https://api.gdeltproject.org/api/v2/doc/doc?${params}`);
     const items = (data.articles||[]).map(a=>({ title:a.title, src:a.domain, url:a.url, time:a.seendate }));
-    setCached(ck, items, 1_800_000);
+    setCached(ck, items, 1200_000);
     res.json(items);
   } catch(e){ res.status(500).json({error:e.message}); }
 });
@@ -314,4 +305,3 @@ app.post('/ai', auth, async (req, res) => {
 app.listen(PORT, () => {
   console.log(`ARKA Relay v7 on :${PORT} | Auth:${SECRET?'ON':'OFF'}`);
 });
-// v9 martes, 10 de marzo de 2026, 15:45:36 CST
