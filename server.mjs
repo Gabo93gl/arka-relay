@@ -11,38 +11,17 @@ const SECRET = process.env.RELAY_SHARED_SECRET || '';
 const PORT   = process.env.PORT || 3001;
 
 // ── Middlewares ───────────────────────────────────────────────
-const ALLOWED_ORIGINS = [
-  /^https?:\/\/localhost(:\d+)?$/,
-  /^https:\/\/.*\.vercel\.app$/,
-  /^https:\/\/.*\.up\.railway\.app$/,
-  /^https:\/\/arka-intelligence\.vercel\.app$/,
-  /^https:\/\/.*\.arkaltd\.io$/,
-  'https://world.arkaltd.io',
-];
-
 app.use(cors({
-  origin: (origin, cb) => {
-    if (!origin) return cb(null, true); // curl / server-to-server
-    const ok = ALLOWED_ORIGINS.some(p =>
-      typeof p === 'string' ? p === origin : p.test(origin)
-    );
-    if (ok) return cb(null, true);
-    cb(new Error(`CORS blocked: ${origin}`));
-  },
+  origin: [
+    /^https?:\/\/localhost(:\d+)?$/,
+    /^https:\/\/.*\.vercel\.app$/,
+    /^https:\/\/.*\.up\.railway\.app$/,
+    /^https:\/\/arka-intelligence\.vercel\.app$/,
+  ],
   methods: ['GET','POST','OPTIONS'],
   allowedHeaders: ['Content-Type','x-relay-key','Authorization'],
-  credentials: true,
 }));
-app.options('*', cors({
-  origin: (origin, cb) => {
-    if (!origin) return cb(null, true);
-    const ok = ALLOWED_ORIGINS.some(p =>
-      typeof p === 'string' ? p === origin : p.test(origin)
-    );
-    cb(ok ? null : new Error('CORS blocked'), ok);
-  },
-  credentials: true,
-}));
+app.options('*', cors());
 app.use(express.json());
 
 // ── Auth middleware ───────────────────────────────────────────
@@ -106,7 +85,22 @@ app.get('/market-snapshot', auth, async (req, res) => {
   try {
     await new Promise(r => setTimeout(r, 1500));
     const key = process.env.FINNHUB_API_KEY;
-    const syms = ['AAPL','MSFT','GOOGL','AMZN','TSLA','SPY','QQQ','GLD','TLT','BTC-USD'];
+    // Stocks & ETFs (Finnhub /quote)
+    const stockSyms = [
+      'AAPL','MSFT','GOOGL','AMZN','TSLA','NVDA','META','TSM',
+      'SPY','QQQ','GLD','TLT','XLF','USO','UNG','SLV','DBB',
+    ];
+    // Forex via Finnhub (OANDA prefix)
+    const fxSyms = [
+      'OANDA:EUR_USD','OANDA:GBP_USD','OANDA:USD_JPY',
+      'OANDA:AUD_USD','OANDA:USD_CAD','OANDA:USD_CHF',
+    ];
+    // Crypto via Binance on Finnhub
+    const cryptoSyms = [
+      'BINANCE:BTCUSDT','BINANCE:ETHUSDT','BINANCE:SOLUSDT',
+      'BINANCE:BNBUSDT','BINANCE:XRPUSDT','BINANCE:USDCUSDT',
+    ];
+    const syms = [...stockSyms, ...fxSyms, ...cryptoSyms];
     const results = await Promise.allSettled(
       syms.map(s => fetchJSON(`https://finnhub.io/api/v1/quote?symbol=${s}&token=${key}`).then(d=>({s,d})))
     );
