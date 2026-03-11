@@ -11,17 +11,38 @@ const SECRET = process.env.RELAY_SHARED_SECRET || '';
 const PORT   = process.env.PORT || 3001;
 
 // ── Middlewares ───────────────────────────────────────────────
+const ALLOWED_ORIGINS = [
+  /^https?:\/\/localhost(:\d+)?$/,
+  /^https:\/\/.*\.vercel\.app$/,
+  /^https:\/\/.*\.up\.railway\.app$/,
+  /^https:\/\/arka-intelligence\.vercel\.app$/,
+  /^https:\/\/.*\.arkaltd\.io$/,
+  'https://world.arkaltd.io',
+];
+
 app.use(cors({
-  origin: [
-    /^https?:\/\/localhost(:\d+)?$/,
-    /^https:\/\/.*\.vercel\.app$/,
-    /^https:\/\/.*\.up\.railway\.app$/,
-    /^https:\/\/arka-intelligence\.vercel\.app$/,
-  ],
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true); // curl / server-to-server
+    const ok = ALLOWED_ORIGINS.some(p =>
+      typeof p === 'string' ? p === origin : p.test(origin)
+    );
+    if (ok) return cb(null, true);
+    cb(new Error(`CORS blocked: ${origin}`));
+  },
   methods: ['GET','POST','OPTIONS'],
   allowedHeaders: ['Content-Type','x-relay-key','Authorization'],
+  credentials: true,
 }));
-app.options('*', cors());
+app.options('*', cors({
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true);
+    const ok = ALLOWED_ORIGINS.some(p =>
+      typeof p === 'string' ? p === origin : p.test(origin)
+    );
+    cb(ok ? null : new Error('CORS blocked'), ok);
+  },
+  credentials: true,
+}));
 app.use(express.json());
 
 // ── Auth middleware ───────────────────────────────────────────
