@@ -92,23 +92,42 @@ app.get('/market-snapshot', auth, async (req, res) => {
       'AAPL','MSFT','GOOGL','AMZN','TSLA','NVDA','META','TSM',
       'SPY','QQQ','GLD','TLT','XLF','USO','UNG','SLV','DBB',
     ];
-    // Forex via Finnhub (OANDA prefix)
-    const fxSyms = [
-      'OANDA:EUR_USD','OANDA:GBP_USD','OANDA:USD_JPY',
-      'OANDA:AUD_USD','OANDA:USD_CAD','OANDA:USD_CHF',
-    ];
     // Crypto via Binance on Finnhub
     const cryptoSyms = [
       'BINANCE:BTCUSDT','BINANCE:ETHUSDT','BINANCE:SOLUSDT',
       'BINANCE:BNBUSDT','BINANCE:XRPUSDT','BINANCE:USDCUSDT',
     ];
-    const syms = [...stockSyms, ...fxSyms, ...cryptoSyms];
-    const results = await Promise.allSettled(
-      syms.map(s => fetchJSON(`https://finnhub.io/api/v1/quote?symbol=${s}&token=${key}`).then(d=>({s,d})))
-    );
+    const syms = [...stockSyms, ...cryptoSyms];
+    const [stockResults, fxData] = await Promise.all([
+      Promise.allSettled(
+        syms.map(s => fetchJSON(`https://finnhub.io/api/v1/quote?symbol=${s}&token=${key}`).then(d=>({s,d})))
+      ),
+      Promise.all([
+        fetchJSON('https://api.frankfurter.app/latest?from=EUR&to=USD,GBP,JPY,MXN,CAD,CHF,BRL,AUD,CNY'),
+        fetchJSON('https://api.frankfurter.app/latest?from=USD&to=MXN,BRL,JPY,EUR,GBP,CAD,CHF,ARS,CLP'),
+      ]).catch(() => [null, null]),
+    ]);
     const data = {};
-    for (const r of results) {
+    for (const r of stockResults) {
       if (r.status==='fulfilled') data[r.value.s] = r.value.d;
+    }
+    // Inyectar pares FX desde Frankfurter en formato compatible con fromQuote
+    const [eurRates, usdRates] = fxData;
+    const fxPairs = {
+      'FX:EUR_USD': { base: 'EUR', quote: 'USD', rate: eurRates?.rates?.USD },
+      'FX:EUR_MXN': { base: 'EUR', quote: 'MXN', rate: eurRates?.rates?.MXN },
+      'FX:EUR_GBP': { base: 'EUR', quote: 'GBP', rate: eurRates?.rates?.GBP },
+      'FX:EUR_JPY': { base: 'EUR', quote: 'JPY', rate: eurRates?.rates?.JPY },
+      'FX:EUR_BRL': { base: 'EUR', quote: 'BRL', rate: eurRates?.rates?.BRL },
+      'FX:USD_MXN': { base: 'USD', quote: 'MXN', rate: usdRates?.rates?.MXN },
+      'FX:USD_BRL': { base: 'USD', quote: 'BRL', rate: usdRates?.rates?.BRL },
+      'FX:USD_JPY': { base: 'USD', quote: 'JPY', rate: usdRates?.rates?.JPY },
+      'FX:USD_CAD': { base: 'USD', quote: 'CAD', rate: usdRates?.rates?.CAD },
+      'FX:USD_CHF': { base: 'USD', quote: 'CHF', rate: usdRates?.rates?.CHF },
+      'FX:GBP_USD': { base: 'GBP', quote: 'USD', rate: eurRates?.rates?.USD && eurRates?.rates?.GBP ? (eurRates.rates.USD / eurRates.rates.GBP) : null },
+    };
+    for (const [sym, fx] of Object.entries(fxPairs)) {
+      if (fx.rate) data[sym] = { c: fx.rate, dp: 0, h: fx.rate, l: fx.rate, o: fx.rate };
     }
     setCached(ck, data, 180_000);
     res.json(data);
@@ -182,6 +201,23 @@ app.get('/gdelt', auth, async (req, res) => {
   } catch(e){ res.status(502).json({error:e.message}); }
 });
 
+
+
+// ── /fx ───────────────────────────────────────────────────────
+app.get('/fx', auth, async (req, res) => {
+  const ck = 'fx_rates';
+  const cached = getCached(ck);
+  if (cached) return res.json(cached);
+  try {
+    const [eurBase, usdBase] = await Promise.all([
+      fetchJSON('https://api.frankfurter.app/latest?from=EUR&to=USD,GBP,JPY,MXN,CAD,CHF,BRL,AUD,CNY'),
+      fetchJSON('https://api.frankfurter.app/latest?from=USD&to=MXN,BRL,JPY,EUR,GBP,CAD,CHF,ARS,CLP'),
+    ]);
+    const data = { eur: eurBase, usd: usdBase, ts: Date.now() };
+    setCached(ck, data, 300_000); // caché 5 min
+    res.json(data);
+  } catch(e){ res.status(502).json({error:e.message}); }
+});
 
 // ── /firms ───────────────────────────────────────────────────
 app.get('/firms', auth, async (req, res) => {
