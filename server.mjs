@@ -362,7 +362,7 @@ app.post('/ai', auth, async (req, res) => {
     const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method:'POST',
       headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${key}` },
-      body: JSON.stringify({ model:'llama-3.1-8b-instant', messages, max_tokens, temperature:0.3 }),
+      body: JSON.stringify({ model:'llama-3.3-70b-versatile', messages, max_tokens, temperature:0.3 }),
     });
     if (r.status===429) return res.status(429).json({error:'Groq rate limited'});
     if (!r.ok) throw new Error(`Groq ${r.status}`);
