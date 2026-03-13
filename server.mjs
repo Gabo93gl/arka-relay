@@ -182,6 +182,24 @@ app.get('/gdelt', auth, async (req, res) => {
   } catch(e){ res.status(502).json({error:e.message}); }
 });
 
+
+// ── /firms ───────────────────────────────────────────────────
+app.get('/firms', auth, async (req, res) => {
+  const NASA_KEY = process.env.NASA_FIRMS_KEY || '98e3b5113209d4813a6e82eda1dc0bea';
+  const ck = 'firms_fires';
+  const cached = getCached(ck);
+  if (cached) return res.json(cached);
+  try {
+    const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${NASA_KEY}/VIIRS_SNPP_NRT/world/1`;
+    const resp = await fetch(url, { signal: AbortSignal.timeout(20000) });
+    const text = await resp.text();
+    setCache(ck, { csv: text }, 10 * 60 * 1000); // caché 10 min
+    res.json({ csv: text });
+  } catch (e) {
+    res.status(502).json({ error: e.message });
+  }
+});
+
 // ── /polymarket ───────────────────────────────────────────────
 app.get('/polymarket', auth, async (req, res) => {
   const ck = `poly_${JSON.stringify(req.query)}`;
