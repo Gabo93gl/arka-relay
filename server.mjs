@@ -17,6 +17,8 @@ app.use(cors({
     /^https:\/\/.*\.vercel\.app$/,
     /^https:\/\/.*\.up\.railway\.app$/,
     /^https:\/\/arka-intelligence\.vercel\.app$/,
+    /^https:\/\/.*\.arkaltd\.io$/,
+    /^https:\/\/world\.arkaltd\.io$/,
   ],
   methods: ['GET','POST','OPTIONS'],
   allowedHeaders: ['Content-Type','x-relay-key','Authorization'],
