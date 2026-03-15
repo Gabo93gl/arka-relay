@@ -1,3 +1,4 @@
+import fetch   from 'node-fetch';
 // ============================================================
 //  ARKA Intelligence Center — Relay Server v9
 //  Rewrite limpio — Mar 2026
