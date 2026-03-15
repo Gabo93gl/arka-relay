@@ -235,11 +235,24 @@ app.get('/pizzint', auth, async (req, res) => {
       signal: AbortSignal.timeout(20000),
     });
     const html = await r.text();
-    // Extraer initialDoomsdayData
-    const dmatch = html.match(/"initialDoomsdayData":(\{.+?\}),"initialCommuteData"/s);
-    const cmatch = html.match(/"initialCommuteData":(\{.+?\})\}/s);
-    const doomsday = dmatch ? JSON.parse(dmatch[1]) : null;
-    const commute  = cmatch ? JSON.parse(cmatch[1]) : null;
+    // Extraer datos de Next.js SSR
+    let doomsday = null, commute = null;
+    // Buscar mercados de Polymarket en el HTML
+    const mktMatch = html.match(/"markets":\[(\{"slug".+?)\],"lowVolume"/s);
+    if (mktMatch) {
+      try { doomsday = { markets: JSON.parse('[' + mktMatch[1] + ']') }; } catch {}
+    }
+    // Extraer optempo/commute
+    const opMatch = html.match(/"optempo":\{"color".+?"timestamp":".+?"\}/s);
+    if (opMatch) {
+      try {
+        const raw = opMatch[0];
+        const label = raw.match(/"label":"([^"]+)"/)?.[1];
+        const level = raw.match(/"level":(\d+)/)?.[1];
+        const desc  = raw.match(/"description":"([^"]+)"/)?.[1];
+        commute = { optempo: { label: label||'Unknown', level: parseInt(level||5), description: desc||'' }, success: true };
+      } catch {}
+    }
     const data = { doomsday, commute, ts: Date.now() };
     setCached(ck, data, 300_000); // caché 5 min
     res.json(data);
