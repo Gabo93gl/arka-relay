@@ -235,24 +235,22 @@ app.get('/pizzint', auth, async (req, res) => {
       signal: AbortSignal.timeout(20000),
     });
     const html = await r.text();
-    // Extraer datos de Next.js SSR
     let doomsday = null, commute = null;
-    // Buscar mercados de Polymarket en el HTML
-    const mktMatch = html.match(/"markets":\[(\{"slug".+?)\],"lowVolume"/s);
-    if (mktMatch) {
-      try { doomsday = { markets: JSON.parse('[' + mktMatch[1] + ']') }; } catch {}
-    }
-    // Extraer optempo/commute
-    const opMatch = html.match(/"optempo":\{"color".+?"timestamp":".+?"\}/s);
-    if (opMatch) {
-      try {
-        const raw = opMatch[0];
-        const label = raw.match(/"label":"([^"]+)"/)?.[1];
-        const level = raw.match(/"level":(\d+)/)?.[1];
-        const desc  = raw.match(/"description":"([^"]+)"/)?.[1];
-        commute = { optempo: { label: label||'Unknown', level: parseInt(level||5), description: desc||'' }, success: true };
-      } catch {}
-    }
+    try {
+      // Next.js escapa el JSON dentro del HTML — buscar el bloque y unescapar
+      const blockMatch = html.match(/\"initialDoomsdayData\":(.+?)\"initialCommuteData\":/s);
+      const commuteMatch = html.match(/\"initialCommuteData\":(.+?)\"championMarketUrl\"/s);
+      if (blockMatch) {
+        const raw = blockMatch[1].trim().replace(/,$/, '');
+        const unescaped = raw.replace(/\\"/g, '"').replace(/\\n/g, '').replace(/\\u([0-9a-fA-F]{4})/g, (m,c) => String.fromCharCode(parseInt(c,16)));
+        doomsday = JSON.parse(unescaped);
+      }
+      if (commuteMatch) {
+        const raw = commuteMatch[1].trim().replace(/,$/, '').replace(/\}$/, '');
+        const unescaped = raw.replace(/\\"/g, '"').replace(/\\n/g, '').replace(/\\u([0-9a-fA-F]{4})/g, (m,c) => String.fromCharCode(parseInt(c,16)));
+        commute = JSON.parse(unescaped + '}');
+      }
+    } catch(parseErr) { console.error('pizzint parse error:', parseErr.message); }
     const data = { doomsday, commute, ts: Date.now() };
     setCached(ck, data, 300_000); // caché 5 min
     res.json(data);
