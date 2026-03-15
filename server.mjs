@@ -276,6 +276,51 @@ app.get('/firms', auth, async (req, res) => {
   }
 });
 
+
+// ── /tension — Global Tension Index from Polymarket ──────────
+app.get('/tension', auth, async (req, res) => {
+  const ck = 'tension_index';
+  const cached = getCached(ck);
+  if (cached) return res.json(cached);
+  try {
+    // Buscar markets de conflicto militar/geopolítico
+    const keywords = ['war','invade','invasion','strike','nuclear','military','nato','conflict','attack'];
+    const params = new URLSearchParams({ limit: '200', active: 'true', closed: 'false' });
+    const markets = await fetchJSON(`https://gamma-api.polymarket.com/markets?${params}`);
+    
+    // Filtrar mercados relevantes
+    const conflictMarkets = markets.filter(m => {
+      const q = (m.question || '').toLowerCase();
+      return keywords.some(k => q.includes(k));
+    }).map(m => {
+      const prices = JSON.parse(m.outcomePrices || '[0,0]');
+      const price = parseFloat(prices[0]) || parseFloat(m.lastTradePrice) || 0;
+      return {
+        question: m.question,
+        slug: m.slug,
+        probability: Math.round(price * 100),
+        volume: Math.round(m.volumeNum || 0),
+        change24h: m.oneDayPriceChange || 0,
+      };
+    }).filter(m => m.probability > 0 && m.volume > 1000)
+      .sort((a, b) => b.volume - a.volume)
+      .slice(0, 20);
+
+    // Calcular tension index (0-100)
+    const weightedSum = conflictMarkets.reduce((sum, m) => sum + (m.probability * Math.log10(m.volume + 1)), 0);
+    const weightTotal = conflictMarkets.reduce((sum, m) => sum + Math.log10(m.volume + 1), 0);
+    const tensionScore = weightTotal > 0 ? Math.round(weightedSum / weightTotal) : 0;
+    
+    // Clasificar nivel
+    const defconLevel = tensionScore > 40 ? 2 : tensionScore > 25 ? 3 : tensionScore > 15 ? 4 : 5;
+    const label = tensionScore > 40 ? 'CRITICAL' : tensionScore > 25 ? 'ELEVATED' : tensionScore > 15 ? 'GUARDED' : 'NORMAL';
+
+    const data = { tensionScore, defconLevel, label, markets: conflictMarkets, ts: Date.now() };
+    setCached(ck, data, 600_000); // caché 10 min
+    res.json(data);
+  } catch(e) { res.status(502).json({ error: e.message }); }
+});
+
 // ── /polymarket ───────────────────────────────────────────────
 app.get('/polymarket', auth, async (req, res) => {
   const ck = `poly_${JSON.stringify(req.query)}`;
