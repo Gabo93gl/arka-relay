@@ -222,7 +222,7 @@ app.get('/fx', auth, async (req, res) => {
 
 // ── /pizzint ──────────────────────────────────────────────────
 app.get('/pizzint', auth, async (req, res) => {
-  const ck = 'pizzint_data';
+  const ck = 'pizzint_data_v2';
   const cached = getCached(ck);
   if (cached) return res.json(cached);
   try {
