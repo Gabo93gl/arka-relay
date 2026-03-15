@@ -219,6 +219,33 @@ app.get('/fx', auth, async (req, res) => {
   } catch(e){ res.status(502).json({error:e.message}); }
 });
 
+
+// ── /pizzint ──────────────────────────────────────────────────
+app.get('/pizzint', auth, async (req, res) => {
+  const ck = 'pizzint_data';
+  const cached = getCached(ck);
+  if (cached) return res.json(cached);
+  try {
+    const r = await fetch('https://www.pizzint.watch/', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+      },
+      signal: AbortSignal.timeout(20000),
+    });
+    const html = await r.text();
+    // Extraer initialDoomsdayData
+    const dmatch = html.match(/"initialDoomsdayData":(\{.+?\}),"initialCommuteData"/s);
+    const cmatch = html.match(/"initialCommuteData":(\{.+?\})\}/s);
+    const doomsday = dmatch ? JSON.parse(dmatch[1]) : null;
+    const commute  = cmatch ? JSON.parse(cmatch[1]) : null;
+    const data = { doomsday, commute, ts: Date.now() };
+    setCached(ck, data, 300_000); // caché 5 min
+    res.json(data);
+  } catch(e) { res.status(502).json({ error: e.message }); }
+});
+
 // ── /firms ───────────────────────────────────────────────────
 app.get('/firms', auth, async (req, res) => {
   const NASA_KEY = process.env.NASA_FIRMS_KEY || '98e3b5113209d4813a6e82eda1dc0bea';
