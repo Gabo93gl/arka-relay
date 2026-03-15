@@ -237,21 +237,22 @@ app.get('/pizzint', auth, async (req, res) => {
     const html = await r.text();
     let doomsday = null, commute = null;
     try {
-      // Next.js double-escapes JSON: \" => " after one replace
-      const d1 = html.indexOf('\\"initialDoomsdayData\\":{');
+      const DOOM_KEY = '\\"initialDoomsdayData\\":';
+      const COMM_KEY = '\\"initialCommuteData\\":';
+      const d1 = html.indexOf(DOOM_KEY);
       const d2 = html.indexOf(',\\"initialCommuteData\\"');
-      const c1 = html.indexOf('\\"initialCommuteData\\":{');
+      const c1 = html.indexOf(COMM_KEY);
       const c2 = html.indexOf(',\\"championMarketUrl\\"');
       if (d1 > 0 && d2 > 0) {
-        const raw = html.slice(d1 + '\\"initialDoomsdayData\\":'.length, d2);
+        const raw = html.slice(d1 + DOOM_KEY.length, d2);
         doomsday = JSON.parse(raw.replace(/\\\\"/g, '"'));
       }
       if (c1 > 0 && c2 > 0) {
-        const raw = html.slice(c1 + '\\"initialCommuteData\\":'.length, c2);
+        const raw = html.slice(c1 + COMM_KEY.length, c2);
         commute = JSON.parse(raw.replace(/\\\\"/g, '"'));
       }
     } catch(parseErr) { console.error('pizzint parse error:', parseErr.message); }
-    const data = { doomsday, commute, ts: Date.now() };
+        const data = { doomsday, commute, ts: Date.now() };
     setCached(ck, data, 300_000); // caché 5 min
     res.json(data);
   } catch(e) { res.status(502).json({ error: e.message }); }
