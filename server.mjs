@@ -237,18 +237,18 @@ app.get('/pizzint', auth, async (req, res) => {
     const html = await r.text();
     let doomsday = null, commute = null;
     try {
-      // Next.js escapa el JSON dentro del HTML — buscar el bloque y unescapar
-      const blockMatch = html.match(/\"initialDoomsdayData\":(.+?)\"initialCommuteData\":/s);
-      const commuteMatch = html.match(/\"initialCommuteData\":(.+?)\"championMarketUrl\"/s);
-      if (blockMatch) {
-        const raw = blockMatch[1].trim().replace(/,$/, '');
-        const unescaped = raw.replace(/\\"/g, '"').replace(/\\n/g, '').replace(/\\u([0-9a-fA-F]{4})/g, (m,c) => String.fromCharCode(parseInt(c,16)));
-        doomsday = JSON.parse(unescaped);
+      // Next.js double-escapes JSON: \" => " after one replace
+      const d1 = html.indexOf('\\"initialDoomsdayData\\":{');
+      const d2 = html.indexOf(',\\"initialCommuteData\\"');
+      const c1 = html.indexOf('\\"initialCommuteData\\":{');
+      const c2 = html.indexOf(',\\"championMarketUrl\\"');
+      if (d1 > 0 && d2 > 0) {
+        const raw = html.slice(d1 + '\\"initialDoomsdayData\\":'.length, d2);
+        doomsday = JSON.parse(raw.replace(/\\\\"/g, '"'));
       }
-      if (commuteMatch) {
-        const raw = commuteMatch[1].trim().replace(/,$/, '').replace(/\}$/, '');
-        const unescaped = raw.replace(/\\"/g, '"').replace(/\\n/g, '').replace(/\\u([0-9a-fA-F]{4})/g, (m,c) => String.fromCharCode(parseInt(c,16)));
-        commute = JSON.parse(unescaped + '}');
+      if (c1 > 0 && c2 > 0) {
+        const raw = html.slice(c1 + '\\"initialCommuteData\\":'.length, c2);
+        commute = JSON.parse(raw.replace(/\\\\"/g, '"'));
       }
     } catch(parseErr) { console.error('pizzint parse error:', parseErr.message); }
     const data = { doomsday, commute, ts: Date.now() };
