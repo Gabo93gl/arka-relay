@@ -252,6 +252,7 @@ app.get('/pizzint', auth, async (req, res) => {
         commute = JSON.parse(raw.replace(/\\\\"/g, '"'));
       }
     } catch(parseErr) { console.error('pizzint parse error:', parseErr.message); }
+    console.log('pizzint debug - d1:', html.indexOf('\\"initialDoomsdayData\\":'), 'html_len:', html.length);
         const data = { doomsday, commute, ts: Date.now() };
     setCached(ck, data, 300_000); // caché 5 min
     res.json(data);
