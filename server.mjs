@@ -73,10 +73,10 @@ async function fetchJSON(url, opts = {}, timeout = 15000, retries = 2) {
 
 // ── /health ───────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
-  res.json({ status:'ok', version:9, ts: new Date().toISOString(),
+  res.json({ status:'ok', version:10, ts: new Date().toISOString(),
     endpoints:['/health','/market-snapshot','/finnhub','/fred','/nyt',
                '/newsapi','/gdelt','/polymarket','/opensky','/ais',
-               '/rss','/oref','/ai','/cyber-feed','/military-feed'] });
+               '/rss','/oref','/ai','/cyber-feed','/military-feed','/pizzint','/fx','/firms'] });
 });
 
 // ── /market-snapshot ─────────────────────────────────────────
