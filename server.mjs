@@ -279,14 +279,31 @@ app.get('/firms', auth, async (req, res) => {
 
 
 // ── /economic-calendar ────────────────────────────────────────
+// Mapa release_id → series_id para los releases más importantes
+const RELEASE_SERIES = {
+  10:  { s:'CPIAUCSL',  unit:'%YoY',  label:'CPI'           },
+  46:  { s:'UNRATE',    unit:'%',     label:'Unemployment'   },
+  50:  { s:'PAYEMS',    unit:'K',     label:'Nonfarm Payroll'},
+  53:  { s:'GDP',       unit:'%',     label:'GDP'            },
+  55:  { s:'FEDFUNDS',  unit:'%',     label:'Fed Funds'      },
+  56:  { s:'PCEPILFE',  unit:'%YoY',  label:'Core PCE'       },
+  57:  { s:'RSAFS',     unit:'%MoM',  label:'Retail Sales'   },
+  82:  { s:'INDPRO',    unit:'%',     label:'Ind. Production'},
+  86:  { s:'CPILFESL',  unit:'%YoY',  label:'Core CPI'       },
+  175: { s:'ISMPMI',    unit:'',      label:'ISM Mfg PMI'    },
+  196: { s:'HOUST',     unit:'K',     label:'Housing Starts' },
+  236: { s:'PPIFGS',    unit:'%YoY',  label:'PPI'            },
+};
+
 app.get('/economic-calendar', auth, async (req, res) => {
-  const ck = 'econ_calendar';
+  const ck = 'econ_calendar_v3';
   const cached = getCached(ck);
   if (cached) return res.json(cached);
   try {
     const key = process.env.FRED_API_KEY;
     const today = new Date();
-    const from = today.toISOString().slice(0,10);
+    const todayStr = today.toISOString().slice(0,10);
+    const from = todayStr;
     const to = new Date(today.getTime() + 14*24*60*60*1000).toISOString().slice(0,10);
     
     const params = new URLSearchParams({
@@ -296,18 +313,48 @@ app.get('/economic-calendar', auth, async (req, res) => {
     });
     const data = await fetchJSON(`https://api.stlouisfed.org/fred/releases/dates?${params}`, {}, 30000);
     
-    // Clasificar importancia por nombre
     const HIGH = ['GDP','CPI','Employment','Nonfarm','Federal Funds','PCE','Retail Sales','PPI','Housing Starts','ISM'];
     const MED  = ['PMI','Trade','Industrial','Consumer','Producer','Durable','Treasury','Manufacturing'];
     
     const events = (data.release_dates || []).map(r => {
       const imp = HIGH.some(k => r.release_name.includes(k)) ? 3 :
                   MED.some(k => r.release_name.includes(k)) ? 2 : 1;
-      return { date: r.date, name: r.release_name, importance: imp, id: r.release_id };
+      const released = r.date <= todayStr;
+      return { date: r.date, name: r.release_name, importance: imp, id: r.release_id, released };
     }).sort((a,b) => new Date(a.date) - new Date(b.date));
-    
-    setCached(ck, { events, from, to, ts: Date.now() }, 3600_000); // caché 1h
-    res.json({ events, from, to, ts: Date.now() });
+
+    // Enriquecer eventos con valor actual + histórico para los releases mapeados
+    const enriched = await Promise.allSettled(
+      events.map(async e => {
+        const mapping = RELEASE_SERIES[e.id];
+        if (!mapping) return e;
+        try {
+          const obsParams = new URLSearchParams({
+            series_id: mapping.s, api_key: key, file_type: 'json',
+            limit: '13', sort_order: 'desc'
+          });
+          const obs = await fetchJSON(`https://api.stlouisfed.org/fred/series/observations?${obsParams}`, {}, 15000);
+          const validObs = (obs.observations || []).filter(o => o.value !== '.');
+          const latest = validObs[0];
+          const prev   = validObs[1];
+          const history = validObs.slice(0,12).reverse().map(o => ({
+            date: o.date, value: parseFloat(o.value)
+          }));
+          return {
+            ...e,
+            actual:   latest ? parseFloat(latest.value) : null,
+            previous: prev   ? parseFloat(prev.value)   : null,
+            unit:     mapping.unit,
+            seriesLabel: mapping.label,
+            history,
+          };
+        } catch { return e; }
+      })
+    );
+
+    const finalEvents = enriched.map(r => r.status === 'fulfilled' ? r.value : r.reason);
+    setCached(ck, { events: finalEvents, from, to, ts: Date.now() }, 3600_000);
+    res.json({ events: finalEvents, from, to, ts: Date.now() });
   } catch(e) { res.status(502).json({ error: e.message }); }
 });
 
