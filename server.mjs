@@ -279,19 +279,27 @@ app.get('/firms', auth, async (req, res) => {
 
 // ── /tension — Global Tension Index from Polymarket ──────────
 app.get('/tension', auth, async (req, res) => {
-  const ck = 'tension_index';
+  const ck = 'tension_index_v2';
   const cached = getCached(ck);
   if (cached) return res.json(cached);
   try {
     // Buscar markets de conflicto militar/geopolítico
-    const keywords = ['war','invade','invasion','strike','nuclear','military','nato','conflict','attack'];
-    const params = new URLSearchParams({ limit: '200', active: 'true', closed: 'false' });
+    const INCLUDE = ['invade','invasion','nuclear','missile','war between','military clash',
+      'strike on','attack on','nato article','world war','annex','troops into',
+      'seize','blockade','coup','regime','fall by','civil war'];
+    const EXCLUDE = ['nba','nfl','nhl','mlb','stanley cup','super bowl','world series',
+      'election','nomination','presidential','congress','senate','governor','mayor',
+      'oscar','grammy','bitcoin','crypto','stock','gta','game','season','award',
+      'openai','apple','google','microsoft','tesla','championship','finals','league'];
+    const params = new URLSearchParams({ limit: '300', active: 'true', closed: 'false' });
     const markets = await fetchJSON(`https://gamma-api.polymarket.com/markets?${params}`);
     
     // Filtrar mercados relevantes
     const conflictMarkets = markets.filter(m => {
       const q = (m.question || '').toLowerCase();
-      return keywords.some(k => q.includes(k));
+      const hasInclude = INCLUDE.some(k => q.includes(k));
+      const hasExclude = EXCLUDE.some(k => q.includes(k));
+      return hasInclude && !hasExclude;
     }).map(m => {
       const prices = JSON.parse(m.outcomePrices || '[0,0]');
       const price = parseFloat(prices[0]) || parseFloat(m.lastTradePrice) || 0;
@@ -302,7 +310,7 @@ app.get('/tension', auth, async (req, res) => {
         volume: Math.round(m.volumeNum || 0),
         change24h: m.oneDayPriceChange || 0,
       };
-    }).filter(m => m.probability > 0 && m.volume > 1000)
+    }).filter(m => m.probability > 0 && m.volume > 5000)
       .sort((a, b) => b.volume - a.volume)
       .slice(0, 20);
 
