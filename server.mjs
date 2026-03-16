@@ -295,6 +295,25 @@ const RELEASE_SERIES = {
   236: { s:'PPIFGS',    unit:'%YoY',  label:'PPI'            },
 };
 
+const RELEASE_BY_NAME = {
+  'Consumer Price Index':   { s:'CPIAUCSL',   unit:'idx',  label:'CPI'           },
+  'Employment Situation':   { s:'UNRATE',     unit:'%',    label:'Unemployment'  },
+  'Nonfarm':                { s:'PAYEMS',     unit:'K',    label:'Nonfarm Payroll'},
+  'Gross Domestic Product': { s:'GDP',        unit:'B$',   label:'GDP'           },
+  'Personal Consumption':   { s:'PCEPILFE',   unit:'idx',  label:'Core PCE'      },
+  'Retail Sales':           { s:'RSAFS',      unit:'M$',   label:'Retail Sales'  },
+  'Industrial Production':  { s:'INDPRO',     unit:'idx',  label:'Ind. Production'},
+  'Commercial Paper':       { s:'CP',         unit:'B$',   label:'Comm. Paper'   },
+  'Federal Funds':          { s:'FEDFUNDS',   unit:'%',    label:'Fed Funds'     },
+  'FOMC':                   { s:'FEDFUNDS',   unit:'%',    label:'Fed Funds Rate'},
+  'Empire State':           { s:'GAUTHMPMI',  unit:'',     label:'Empire State'  },
+  'Housing Starts':         { s:'HOUST',      unit:'K',    label:'Housing Starts'},
+  'Producer Price':         { s:'PPIACO',     unit:'idx',  label:'PPI'           },
+  'Trade Balance':          { s:'BOPGSTB',    unit:'M$',   label:'Trade Balance' },
+  'Durable Goods':          { s:'DGORDER',    unit:'M$',   label:'Durable Goods' },
+  'G.17':                   { s:'INDPRO',     unit:'idx',  label:'Ind. Production'},
+};
+
 app.get('/economic-calendar', auth, async (req, res) => {
   const ck = 'econ_calendar_v5';
   const cached = getCached(ck);
