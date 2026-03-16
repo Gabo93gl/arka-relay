@@ -279,18 +279,19 @@ app.get('/firms', auth, async (req, res) => {
 
 // ── /tension — Global Tension Index from Polymarket ──────────
 app.get('/tension', auth, async (req, res) => {
-  const ck = 'tension_index_v2';
+  const ck = 'tension_index_v3';
   const cached = getCached(ck);
   if (cached) return res.json(cached);
   try {
     // Buscar markets de conflicto militar/geopolítico
-    const INCLUDE = ['invade','invasion','nuclear','missile','war between','military clash',
-      'strike on','attack on','nato article','world war','annex','troops into',
-      'seize','blockade','coup','regime','fall by','civil war'];
+    const INCLUDE = ['invade','invasion','nuclear','missile','military','war','strike',
+      'attack','nato','conflict','clash','troops','annex','seize','blockade',
+      'coup','regime','civil war','ground operation','capture','sanctions'];
     const EXCLUDE = ['nba','nfl','nhl','mlb','stanley cup','super bowl','world series',
-      'election','nomination','presidential','congress','senate','governor','mayor',
-      'oscar','grammy','bitcoin','crypto','stock','gta','game','season','award',
-      'openai','apple','google','microsoft','tesla','championship','finals','league'];
+      'nomination','presidential','congress','senate','governor','mayor',
+      'oscar','grammy','bitcoin','crypto','gta','video game','season','award',
+      'championship','finals','league','tournament','win the','openai','apple',
+      'google','microsoft','tesla','musk','trump win','election'];
     const params = new URLSearchParams({ limit: '300', active: 'true', closed: 'false' });
     const markets = await fetchJSON(`https://gamma-api.polymarket.com/markets?${params}`);
     
