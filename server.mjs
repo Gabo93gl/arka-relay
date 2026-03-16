@@ -296,7 +296,7 @@ const RELEASE_SERIES = {
 };
 
 app.get('/economic-calendar', auth, async (req, res) => {
-  const ck = 'econ_calendar_v4';
+  const ck = 'econ_calendar_v5';
   const cached = getCached(ck);
   if (cached) return res.json(cached);
   try {
@@ -326,7 +326,12 @@ app.get('/economic-calendar', auth, async (req, res) => {
     // Enriquecer eventos con valor actual + histórico para los releases mapeados
     const enriched = await Promise.allSettled(
       events.map(async e => {
-        const mapping = RELEASE_SERIES[e.id];
+        // Try ID-based lookup first, then name-based
+        let mapping = RELEASE_SERIES[e.id];
+        if (!mapping) {
+          const nameKey = Object.keys(RELEASE_BY_NAME).find(k => e.name.includes(k));
+          mapping = nameKey ? RELEASE_BY_NAME[nameKey] : null;
+        }
         if (!mapping) return e;
         try {
           const obsParams = new URLSearchParams({
