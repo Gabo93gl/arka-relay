@@ -296,7 +296,7 @@ const RELEASE_SERIES = {
 };
 
 app.get('/economic-calendar', auth, async (req, res) => {
-  const ck = 'econ_calendar_v3';
+  const ck = 'econ_calendar_v4';
   const cached = getCached(ck);
   if (cached) return res.json(cached);
   try {
