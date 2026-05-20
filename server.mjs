@@ -154,7 +154,7 @@ app.get('/alphavantage', auth, async (req, res) => {
   try {
     const params = new URLSearchParams({...req.query, apikey:key});
     const data = await fetchJSON(`https://www.alphavantage.co/query?${params}`);
-    setCached(ck, data, 60_000); // 1 min cache (respeta rate limits del free plan)
+    setCached(ck, data, 240_000); // 4 min cache (respeta rate limits del free plan)
     res.json(data);
   } catch(e){ res.status(502).json({error:e.message}); }
 });
