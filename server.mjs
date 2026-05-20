@@ -145,6 +145,20 @@ app.get('/finnhub', auth, async (req, res) => {
   } catch(e){ res.status(502).json({error:e.message}); }
 });
 
+// ── /alphavantage ────────────────────────────────────────────
+app.get('/alphavantage', auth, async (req, res) => {
+  const key = process.env.ALPHA_VANTAGE_KEY;
+  const ck = `av_${JSON.stringify(req.query)}`;
+  const cached = getCached(ck);
+  if (cached) return res.json(cached);
+  try {
+    const params = new URLSearchParams({...req.query, apikey:key});
+    const data = await fetchJSON(`https://www.alphavantage.co/query?${params}`);
+    setCached(ck, data, 60_000); // 1 min cache (respeta rate limits del free plan)
+    res.json(data);
+  } catch(e){ res.status(502).json({error:e.message}); }
+});
+
 // ── /fred ─────────────────────────────────────────────────────
 app.get('/fred', auth, async (req, res) => {
   const key = process.env.FRED_API_KEY;
